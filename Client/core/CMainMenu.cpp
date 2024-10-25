@@ -13,7 +13,6 @@
 #include <game/CGame.h>
 #include "CNewsBrowser.h"
 #include "CLanguageSelector.h"
-#include "CDiscordRichPresence.h"
 
 #define NATIVE_RES_X    1280.0f
 #define NATIVE_RES_Y    1024.0f
@@ -23,6 +22,9 @@
 
 #define NATIVE_LOGO_X     1058.0f
 #define NATIVE_LOGO_Y     540.0f
+
+#define IP_TO_AUTOCONNECT "127.0.0.1"
+#define PORT_TO_AUTOCONNECT 22003
 
 #define CORE_MTA_MENUITEMS_START_X  0.168
 
@@ -47,6 +49,7 @@
 #define CORE_MTA_LOGO               "cgui\\images\\background_logo.png"
 #define CORE_MTA_FILLER             "cgui\\images\\mta_filler.png"
 #define CORE_MTA_VERSION            "cgui\\images\\version.png"
+#define CORE_MTA_LATEST_NEWS        "cgui\\images\\latest_news.png"
 
 static int          WaitForMenu = 0;
 static const SColor headlineColors[] = {SColorRGBA(233, 234, 106, 255), SColorRGBA(233 / 6 * 4, 234 / 6 * 4, 106 / 6 * 4, 255),
@@ -77,7 +80,6 @@ CMainMenu::CMainMenu(CGUI* pManager)
     m_bStarted = false;
     m_fFader = 0;
     m_ucFade = FADE_INVISIBLE;
-    m_bCursorAlphaReset = false;
 
     // Adjust window size to resolution
     CVector2D ScreenSize = m_pManager->GetResolution();
@@ -166,7 +168,7 @@ CMainMenu::CMainMenu(CGUI* pManager)
     m_pVersion = reinterpret_cast<CGUIStaticImage*>(pManager->CreateStaticImage());
     m_pVersion->LoadFromFile(CORE_MTA_VERSION);
     m_pVersion->SetParent(m_pCanvas);
-    m_pVersion->SetPosition(CVector2D(0.855f, 0.512f), true);
+    m_pVersion->SetPosition(CVector2D(0.845f, 0.528f), true);
     m_pVersion->SetSize(CVector2D((32 / NATIVE_RES_X) * m_iMenuSizeX, (32 / NATIVE_RES_Y) * m_iMenuSizeY), false);
     m_pVersion->SetProperty("InheritsAlpha", "False");
 
@@ -180,12 +182,8 @@ CMainMenu::CMainMenu(CGUI* pManager)
     // Filepath, Relative position, absolute native size
     // And the font for the graphics is ?
     m_menuItems.push_back(CreateItem(MENU_ITEM_QUICK_CONNECT, "menu_quick_connect.png", CVector2D(0.168f, fBase + fGap * 0)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_BROWSE_SERVERS, "menu_browse_servers.png", CVector2D(0.168f, fBase + fGap * 1)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_HOST_GAME, "menu_host_game.png", CVector2D(0.168f, fBase + fGap * 2)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_MAP_EDITOR, "menu_map_editor.png", CVector2D(0.168f, fBase + fGap * 3)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_SETTINGS, "menu_settings.png", CVector2D(0.168f, fBase + fGap * 4)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_ABOUT, "menu_about.png", CVector2D(0.168f, fBase + fGap * 5)));
-    m_menuItems.push_back(CreateItem(MENU_ITEM_QUIT, "menu_quit.png", CVector2D(0.168f, fBase + fGap * 6)));
+    m_menuItems.push_back(CreateItem(MENU_ITEM_SETTINGS, "menu_settings.png", CVector2D(0.168f, fBase + fGap * 1)));
+    m_menuItems.push_back(CreateItem(MENU_ITEM_QUIT, "menu_quit.png", CVector2D(0.168f, fBase + fGap * 2)));
 
     // We store the position of the top item, and the second item.  These will be useful later
     float fFirstItemSize = m_menuItems.front()->image->GetSize(false).fY;
@@ -210,28 +208,21 @@ CMainMenu::CMainMenu(CGUI* pManager)
     m_pMenuArea->SetMouseEnterHandler(GUI_CALLBACK(&CMainMenu::OnMenuEnter, this));
     m_pMenuArea->SetMouseLeaveHandler(GUI_CALLBACK(&CMainMenu::OnMenuExit, this));
 
+    float fDrawSizeX = (365 / NATIVE_RES_X) * m_iMenuSizeX;            // Right aligned
+    float fDrawSizeY = (52 / NATIVE_RES_Y) * m_iMenuSizeY;
+    float fDrawPosX = 0.83f * m_iMenuSizeX - fDrawSizeX;
+    float fDrawPosY = 0.60f * m_iMenuSizeY;
     m_pLatestNews = reinterpret_cast<CGUIStaticImage*>(pManager->CreateStaticImage());
-    if (!m_pLatestNews->LoadFromFile(PathJoin(g_pCore->GetLocalization()->GetLanguageDirectory(), "latest_news.png")))
-    {
-        // Load en_US if no localization is available
-        auto pLanguage = g_pLocalization->GetLanguage("en_US");
-        m_pLatestNews->LoadFromFile(PathJoin(g_pCore->GetLocalization()->GetLanguageDirectory(pLanguage), "latest_news.png"));
-    }
+    m_pLatestNews->LoadFromFile(CORE_MTA_LATEST_NEWS);
     m_pLatestNews->SetParent(m_pCanvas);
-    m_pLatestNews->SetProperty("InheritsAlpha", "False");
-    CVector2D vecNativeSize;
-    m_pLatestNews->GetNativeSize(vecNativeSize);
-    float fDrawSizeX = (vecNativeSize.fX / NATIVE_RES_X) * m_iMenuSizeX;
-    float fDrawSizeY = (vecNativeSize.fY / NATIVE_RES_Y) * m_iMenuSizeY;
-    m_pLatestNews->SetSize(CVector2D(fDrawSizeX, fDrawSizeY), false);
-    float fDrawPosX = 0.83f * m_iMenuSizeX - fDrawSizeX;            // Right aligned
-    float fDrawPosY = 0.61f * m_iMenuSizeY;
     m_pLatestNews->SetPosition(CVector2D(fDrawPosX, fDrawPosY), false);
+    m_pLatestNews->SetSize(CVector2D(fDrawSizeX, fDrawSizeY), false);
+    m_pLatestNews->SetProperty("InheritsAlpha", "False");
     m_pLatestNews->SetVisible(false);
 
     // Create news item stuff
     fDrawPosX -= 25;
-    fDrawPosY += fDrawSizeY + 3;
+    fDrawPosY += fDrawSizeY - 8;
     for (uint i = 0; i < CORE_MTA_NEWS_ITEMS; i++)
     {
         fDrawPosY += 20;
@@ -294,16 +285,6 @@ CMainMenu::CMainMenu(CGUI* pManager)
     // We're not ingame
     SetIsIngame(false);
 
-    // Discord
-    if (g_pCore->GetCVars()->GetValue("allow_discord_rpc", false))
-    {
-        auto discord = g_pCore->GetDiscord();
-        if (!discord->IsDiscordRPCEnabled())
-            discord->SetDiscordRPCEnabled(true);
-
-        discord->SetPresenceState(_("Main menu"), false);
-        discord->SetPresenceStartTimestamp(0);
-    }
     // Store the pointer to the graphics subsystem
     m_pGraphics = CGraphics::GetSingletonPtr();
 
@@ -342,17 +323,17 @@ CMainMenu::CMainMenu(CGUI* pManager)
     // Add annonying alert
     m_pAlertTexture.reset(reinterpret_cast<CGUITexture*>(m_pManager->CreateTexture()));
     std::int32_t buffer = 0xFFFF0000;
-    m_pAlertTexture->LoadFromMemory(&buffer, 1, 1);            // HACK: Load red dot
+    m_pAlertTexture->LoadFromMemory(&buffer, 1, 1); // HACK: Load red dot
 
     m_pAlertImage.reset(reinterpret_cast<CGUIStaticImage*>(m_pManager->CreateStaticImage(m_pBackground)));
     m_pAlertImage->LoadFromTexture(m_pAlertTexture.get());
-    m_pAlertImage->SetPosition({0.0f, 0.0f}, false);
-    m_pAlertImage->SetSize({ScreenSize.fX, 20.0f});
+    m_pAlertImage->SetPosition({ 0.0f, 0.0f }, false);
+    m_pAlertImage->SetSize({ ScreenSize.fX, 20.0f });
 
     #define XP_VISTA_WARNING _("MTA will not receive updates on XP/Vista after July 2019.\n\nUpgrade Windows to play on the latest servers.")
     m_pAlertLabel.reset(reinterpret_cast<CGUILabel*>(m_pManager->CreateLabel(m_pAlertImage.get(), XP_VISTA_WARNING)));
-    m_pAlertLabel->SetPosition({0.0f, 2.0f}, false);
-    m_pAlertLabel->SetSize({ScreenSize.fX, 20.0f});
+    m_pAlertLabel->SetPosition({ 0.0f, 2.0f }, false);
+    m_pAlertLabel->SetSize({ ScreenSize.fX, 20.0f });
     m_pAlertLabel->SetHorizontalAlign(CGUI_ALIGN_HORIZONTALCENTER);
 #endif
 }
@@ -599,17 +580,6 @@ void CMainMenu::Update()
         if (m_fFader > 0.0f)
         {
             m_bIsVisible = true;            // Make cursor appear faster
-
-            if (!m_bCursorAlphaReset)
-            {
-                CGUI* pGUI = g_pCore->GetGUI();
-
-                if (pGUI)
-                {
-                    pGUI->SetCursorAlpha(1.0f);
-                    m_bCursorAlphaReset = true;
-                }
-            }
         }
 
         // If the fade is complete
@@ -618,7 +588,6 @@ void CMainMenu::Update()
             m_ucFade = FADE_VISIBLE;
             m_bIsVisible = true;
             m_bIsFullyVisible = true;
-
         }
     }
     // Fade out
@@ -632,11 +601,7 @@ void CMainMenu::Update()
         m_pBackground->SetAlpha(Clamp(0.f, m_fFader, CORE_MTA_BG_MAX_ALPHA));
 
         if (m_fFader < 1.0f)
-        {
             m_bIsVisible = false;            // Make cursor disappear faster
-            m_bCursorAlphaReset = false;
-        }
-            
 
         // If the fade is complete
         if (m_fFader <= 0)
@@ -682,19 +647,6 @@ void CMainMenu::Update()
         }
 #endif
 
-        if (WaitForMenu == 299)
-        {
-            if (!g_pCore->GetCVars()->GetValue("discord_rpc_share_data_firsttime", false)
-                && g_pCore->GetCVars()->GetValue("allow_discord_rpc", false)
-                && !g_pCore->GetCVars()->GetValue("discord_rpc_share_data", false))
-            {
-                m_Settings.ShowRichPresenceShareDataQuestionBox();
-                CVARS_SET("discord_rpc_share_data_firsttime", true);
-            }
-            else
-                CVARS_SET("discord_rpc_share_data_firsttime", true);
-        }
-
         if (WaitForMenu < 300)
             WaitForMenu++;
     }
@@ -732,6 +684,9 @@ void CMainMenu::Update()
 void CMainMenu::Show(bool bOverlay)
 {
     SetVisible(true, bOverlay);
+    std::string nicknameply;
+    CVARS_GET("nick", nicknameply);
+    CCore::GetSingleton().GetConnectManager()->Connect(IP_TO_AUTOCONNECT, PORT_TO_AUTOCONNECT, nicknameply.c_str(), "");
 }
 
 void CMainMenu::Hide()
@@ -750,7 +705,6 @@ void CMainMenu::OnEscapePressedOffLine()
 void CMainMenu::SetVisible(bool bVisible, bool bOverlay, bool bFrameDelay)
 {
     CMultiplayer* pMultiplayer = CCore::GetSingleton().GetMultiplayer();
-    CQuestionBox* pQuestionBox = CCore::GetSingleton().GetLocalGUI()->GetMainMenu()->GetQuestionWindow();
     pMultiplayer->DisablePadHandler(bVisible);
 
     if ((m_ucFade == FADE_VISIBLE || m_ucFade == FADE_IN) && bVisible == false)
@@ -772,11 +726,6 @@ void CMainMenu::SetVisible(bool bVisible, bool bOverlay, bool bFrameDelay)
         m_Credits.SetVisible(false);
         m_pNewsBrowser->SetVisible(false);
 
-        if (GetIsIngame() && pQuestionBox->IsVisible())
-        {
-            pQuestionBox->Reset();
-            pQuestionBox->Hide();
-        }
         //        m_bIsInSubWindow = false;
     }
     else
@@ -920,9 +869,10 @@ bool CMainMenu::OnQuickConnectButtonClick(CGUIElement* pElement, bool left)
         g_pCore->GetCommands()->Execute(command.data());
         return true;
     }
-
-    m_ServerBrowser.SetVisible(true);
-    m_ServerBrowser.OnQuickConnectButtonClick();
+    std::string strNick;
+    CVARS_GET("nick", strNick);
+    m_ServerBrowser.SetVisible(false);
+    CCore::GetSingleton().GetConnectManager()->Connect(IP_TO_AUTOCONNECT, PORT_TO_AUTOCONNECT, strNick.c_str(), "");
     return true;
 }
 
@@ -1060,12 +1010,13 @@ sMenuItem* CMainMenu::CreateItem(unsigned char menuType, const char* szFilename,
 {
     CGUIStaticImage* pImage = reinterpret_cast<CGUIStaticImage*>(m_pManager->CreateStaticImage());
 
-    if (!pImage->LoadFromFile(PathJoin(g_pCore->GetLocalization()->GetLanguageDirectory(), szFilename)))
+    if (g_pCore->GetLocalization()->IsLocalized())
     {
-        // Load en_US if no localization is available
-        auto pLanguage = g_pLocalization->GetLanguage("en_US");
-        pImage->LoadFromFile(PathJoin(g_pCore->GetLocalization()->GetLanguageDirectory(pLanguage), szFilename));
+        if (!pImage->LoadFromFile(PathJoin(g_pCore->GetLocalization()->GetLanguageDirectory(), szFilename)))
+            pImage->LoadFromFile(PathJoin("cgui/images", szFilename));
     }
+    else
+        pImage->LoadFromFile(PathJoin("cgui/images", szFilename));
 
     // Make our positions absolute
     int iPosX = vecRelPosition.fX * m_iMenuSizeX;
